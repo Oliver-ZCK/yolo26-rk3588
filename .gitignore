@@ -11,6 +11,9 @@ outputs/map_gt.json
 outputs/board_eval_images/
 outputs/map_build_*/
 
+# 真机归因的原始张量 dump（diff_raw.py 随时可重新抓取）
+outputs/*.int8*
+
 # 评估过程日志（结论都在 map_*.json 报告里）
 outputs/*.log
 

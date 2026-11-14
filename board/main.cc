@@ -251,6 +251,7 @@ int main(int argc, char** argv) {
   const std::string img_path = argv[2];
   std::string out_path = "board_out.json";
   std::string eval_dir, eval_out = "board_eval.json";
+  std::string dump_raw;
   float eval_conf = 0.001f;
   bool int8 = false, detail = false, keep_output = false;
   int bench_loops = 0;
@@ -266,6 +267,7 @@ int main(int argc, char** argv) {
     else if (!std::strcmp(argv[i], "--eval-out") && i + 1 < argc) eval_out = argv[++i];
     else if (!std::strcmp(argv[i], "--eval-conf") && i + 1 < argc)
       eval_conf = static_cast<float>(std::atof(argv[++i]));
+    else if (!std::strcmp(argv[i], "--dump-raw") && i + 1 < argc) dump_raw = argv[++i];
     else if (!std::strcmp(argv[i], "--bench") && i + 1 < argc) bench_loops = std::atoi(argv[++i]);
     else if (!std::strcmp(argv[i], "--out")) out_path = argv[++i];
   }
@@ -448,6 +450,24 @@ int main(int argc, char** argv) {
   if (out.size != expect_bytes) {
     std::fprintf(stderr, "输出字节数 %u 与形状不符（期望 %zu）\n", out.size, expect_bytes);
     return 1;
+  }
+
+  // 真机归因用：存模型原生输出（int8/FP16 原始字节）+ sidecar 张量属性，
+  // PC 侧 diff_raw.py 按同一张图对比模拟器输出
+  if (!dump_raw.empty()) {
+    std::FILE* f = std::fopen(dump_raw.c_str(), "wb");
+    if (f == nullptr) {
+      std::fprintf(stderr, "写不了 raw 文件: %s\n", dump_raw.c_str());
+      return 1;
+    }
+    std::fwrite(out.buf, 1, out.size, f);
+    std::fclose(f);
+    const std::string meta = dump_raw + ".json";
+    std::FILE* m = std::fopen(meta.c_str(), "w");
+    std::fprintf(m, "{\"type\":\"%s\",\"zp\":%d,\"scale\":%.10f,\"channels\":%d,\"anchors\":%d}\n",
+                 TypeName(out_attr.type), out_attr.zp, out_attr.scale, 4 + nc, na);
+    std::fclose(m);
+    std::printf("  raw 输出 -> %s (%zu bytes) + %s\n", dump_raw.c_str(), out.size, meta.c_str());
   }
 
   // rknn_outputs_get 给的是逻辑布局 [1, 84, 8400]，和 PC 侧 one2many 输出一致
