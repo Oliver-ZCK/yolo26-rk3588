@@ -1,6 +1,6 @@
 # YOLO26n 端侧部署（RK3588）
 
-把 YOLO26n 部署到 RK3588 NPU。每一级转换（PyTorch → ONNX → RKNN → 板端 C++）都用同一套标准逐框比对验证，**FP16 与 INT8 两条链路均已端到端闭环**：板端单图推理 FP16 20.8 FPS / INT8 **30.5 FPS**，摄像头实时链路单帧处理 FP16 94.9 ms / INT8 **49.1 ms**。全量 mAP 标尺：FP16 相对 FP32 零损失，INT8 **−5.4 pt（−13.7%）**。
+把 YOLO26n 部署到 RK3588 NPU。每一级转换（PyTorch → ONNX → RKNN → 板端 C++）都用同一套标准逐框比对验证，**FP16 与 INT8 两条链路均已端到端闭环**：板端单图推理 FP16 20.8 FPS / INT8 **30.5 FPS**，摄像头实时链路单帧处理 FP16 94.9 ms / INT8 **49.1 ms**。精度标尺：FP16 相对 FP32 零损失（真机一致）；INT8 模拟器 −5.4 pt，**真机再低 7 pt——模拟器的量化数字系统性乐观**。
 
 ## 验证链
 
@@ -61,7 +61,7 @@ YOLO26 导出的是 one2many 单输出 `[1, 84, 8400]`：前 4 通道是框坐�
 其他量化选项的实测结论：
 
 - **标定算法**：mmse 在 256 张标定集上 ETA 9.5 小时（放弃）；kl_divergence 相比 normal 无优势；最终部署 normal。
-- **auto-hybrid**（量化后余弦相似度低于阈值的层保留浮点）：最终模型带 `cos_thresh=0.999` 部署，逐框偏差仍在 17 px 量级，未达预期的个位数 px；阈值扫描与 DFL 分支逐层敏感性分析列入 Roadmap。
+- **auto-hybrid**（量化后余弦相似度低于阈值的层保留浮点）：实测**从未生效过**——`auto_hybrid_cos_thresh` 只是 config 里的阈值，开关是 `build(auto_hybrid=True)`，部署版漏了后者（mAP 三点扫描 bit 级全同才揭穿，逐框比对抓不到这类配置 bug）。真启用后扫 0.9995 / 0.9999：保层粒度失控（各档体积都≈FP16 的 7.4 MB）且**非单调**（0.9995 比 0.9999 还差 2 pt——保浮点层改变了下游激活分布，下游 INT8 层的标定 scale 失配），无甜点，0.9999 被 FP16 同体积支配。
 - **w8a16**（激活 int16）能同时绕开类别分数清零与 DFL 噪声，但 RK3588 的量化 config 直接拒绝——那是 RK3576/RK3562 的能力。
 
 ## mAP 标尺：三档精度定标（val2017 全量 4744 张）
@@ -84,7 +84,34 @@ YOLO26 导出的是 one2many 单输出 `[1, 84, 8400]`：前 4 通道是框坐�
 - 与官方 YOLO26n 基准 40.9（one2many+NMS 口径，取自同版本 ultralytics README）差
   −1.6 pt，归因于 GT 构建（crowd 标注处理）、NMS 口径与权重版本，不影响档间对比；
 - 工具链边界：模拟器不能 `load_rknn`（仅真机可用），FP16/INT8 评估按部署参数在
-  模拟器会话内重建（与已部署模型同源）。本标尺为模拟器数字，板端全量复核见 Roadmap。
+  模拟器会话内重建（与已部署模型同源）。本标尺为模拟器数字——板端 200 张复核
+  发现 INT8 存在 7 pt 乐观偏差，见下一节。
+
+## 量化优化：hybrid 扫描、DFL 定点与真机复核
+
+标尺建完后的第一轮优化实验，三个结论都写在负结果里（200 张固定子集，同协议）：
+
+| 配置 | 运行处 | mAP | AP75 | AP小 | 体积 | 板端推理 |
+|---|---|---|---|---|---|---|
+| FP16 | 模拟器 / 板端 | 0.4406 / **0.4421** | 0.465 / 0.467 | 0.208 / 0.209 | 7.45 MB | 63.7 ms |
+| 纯 INT8 | 模拟器 / 板端 | 0.3913 / **0.3201** | 0.415 / 0.309 | 0.164 / 0.081 | 4.81 MB | 25.7 ms |
+| DFL 定点（回归分支 9 层 FP16） | 板端 | 0.3243 | 0.323 | 0.084 | 4.98 MB | ~29 ms |
+| auto-hybrid 0.9999 | 模拟器 | 0.4119 | 0.443 | 0.178 | 7.48 MB | — |
+
+- **FP16 真机与模拟器一致**（差 0.15 pt，bbox 落盘截断量级），两侧评估链路互证；
+- **INT8 真机比模拟器低 7 pt**：AP小 腰斩、AP75 崩 10 pt。单图大目标逐框比对
+  （17 vs 19 px）看不到的差距，在 200 张的小目标上被 NPU 执行噪声放大——
+  **模拟器的 PTQ 数字系统性乐观**，部署决策必须以真机标尺为准；
+- **PTQ 配置够不着真机的损失**：手动 hybrid（step1 生成层级量化配置 → 编辑
+  `custom_quantize_layers` 点名回归分支 → step2）把 DFL 分支保 FP16 只换回
+  +0.4 pt——真机 INT8 的 12 pt 损失大头在 NPU 的 INT8 执行差异，不在量化参数。
+  再往下是量化感知训练（QAT）的领地；
+- **真机口径的交易**：INT8 用 12 pt mAP 换 2.5× 速度、−35% 体积。实时场景值，
+  精度敏感场景直接 FP16（0.442 无损）。
+
+板端批量评估：`yolo26 --dir <images> --eval-out x.json` 输出 COCO 格式检出，
+PC 侧 `eval_map.py --from-board` 直接 COCOeval——模拟器不能 `load_rknn`，
+hybrid 定点模型的 mAP 只能在真机上量。
 
 ## 目录结构
 
@@ -154,8 +181,15 @@ mAP 标尺（需 pycocotools；GT 复用标定 zip 自带的 YOLO 标签，无�
 python3 src/eval_map.py --stage fp32
 python3 src/eval_map.py --stage fp16
 python3 src/eval_map.py --stage int8
+python3 src/eval_map.py --stage int8 --cos-thresh 0.9995   # auto-hybrid 阈值扫描（0=关闭，作纯 INT8 对照）
+python3 src/eval_map.py --stage int8 --from-board outputs/board_int8_eval.json --limit 200   # 评估板端批量输出
 ```
 
+板端批量评估（COCO 协议与 PC 侧一致，见「量化优化」一节）：
+
+```bash
+# 板上：./yolo26 <model.rknn> x --dir <images> --eval-out eval.json   # conf=0.001 可用 --eval-conf 覆盖
+```
 标定只需要图片、不需要标注：`prepare_calibration.py` 以 seed=0 抽 256 张写入 `dataset.txt`，数据落在仓库外 `~/datasets/coco`；官方源国内直连仅 ~55 KB/s，脚本优先走 hf-mirror 镜像，已下载过 zip 的用 `--zip` 指入跳过。后续 mAP 评估排除这 256 张即可保证与标定集不重叠。
 
 板端（需 RK3588 与 PC 同网；目标地址用环境变量 `BOARD` / `REMOTE` 覆盖，PC 侧解释器用 `PY` 覆盖；交叉编译用正点原子 buildroot SDK，`build.sh` 默认路径可用 `SDK` 环境变量覆盖）：
@@ -182,9 +216,10 @@ board/deploy_camera.sh models/yolo26n_int8_rknn_model/yolo26n-rk3588-int8.rknn
 
 ## Roadmap
 
-- **五规格横评**：n 已闭环（含 mAP 标尺），s/m/l/x 复制同一条链路后选型深耕。
-- **板端全量 mAP 复核**：mAP 标尺目前是模拟器数字，真机 NPU 舍入差异待量化（预期零点几个点内）。
-- **hybrid 量化阈值扫描**：INT8 损失集中在小目标（AP 小相对 −29%），0.999 一档未达预期，对 DFL 分支做逐层敏感性分析。
+- **真机 INT8 差异归因**：板端比模拟器低 7 pt（AP小 腰斩），对比 8400 锚点的输出张量定位发散起始的层；板端评估基建已就绪（`--dir` 批量 + `--from-board`）。
+- **量化感知训练（QAT）**：PTQ 路线已实测到顶（DFL 定点仅 +0.4 pt），真机 INT8 损失要往下打只剩 QAT。
+- **板端全量 mAP 复核**：200 张子集已完成（发现 INT8 乐观偏差 7 pt），全量 4744 张待跑。
+- **五规格横评**：n 已闭环（含标尺与真机复核），s/m/l/x 复制同一条链路后选型深耕。
 - **摄像头采帧策略放宽**：INT8 后处理（11.6 ms）已远快于采集，丢帧策略可放宽换更高处理帧率。
 - **零拷贝与内存优化实测**：零拷贝路径已实现，待纳入常规 bench。
 

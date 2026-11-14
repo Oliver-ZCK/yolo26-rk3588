@@ -7,6 +7,10 @@ outputs/rknn*_build/
 # mAP 评估的 GT 缓存（5.6MB）：eval_map.py 从 val2017 的 YOLO 标签确定性重建
 outputs/map_gt.json
 
+# 板端评估图片子集（31MB）与各阈值的 RKNN 构建产物：脚本可确定性重建
+outputs/board_eval_images/
+outputs/map_build_*/
+
 # 评估过程日志（结论都在 map_*.json 报告里）
 outputs/*.log
 

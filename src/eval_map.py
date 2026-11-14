@@ -11,7 +11,7 @@ FP32 走 ultralytics predict；FP16/INT8 走 rknn-toolkit2 模拟器，输入路
 用法:
     python3 src/eval_map.py --stage fp32 [--limit 500]
     python3 src/eval_map.py --stage fp16 [--limit 500]
-    python3 src/eval_map.py --stage int8 [--limit 500]
+    python3 src/eval_map.py --stage int8 [--limit 500] [--cos-thresh 0.99|0]
 """
 
 import argparse
@@ -105,13 +105,16 @@ def pt_stage(images: list[Path]) -> list[dict]:
     return dets
 
 
-def rknn_stage(images: list[Path], stage: str) -> list[dict]:
+def rknn_stage(images: list[Path], stage: str, cos_thresh: float | None = None) -> list[dict]:
     """模拟器前向，输出统一到原图坐标系的检出清单。
 
     模拟器只认 load_onnx + build 的会话内模型（load_rknn 仅真机可用，
     这正是 export_rknn.py「一次 build 同时产出固化模型与模拟器验证」的
     原因），所以按部署时的原参数重建：FP16 不量化；INT8 复刻改图 ONNX +
-    w8a8/normal/hybrid 0.999 + 同一份标定集，与已部署模型同源。
+    w8a8/normal + 同一份标定集，与已部署模型同源。
+
+    cos_thresh: None = 部署档 0.999；0 = 关闭 auto-hybrid（纯 INT8 对照）；
+    >0 = 扫描该阈值。不同阈值各用独立 build 目录，中间图互不覆盖。
     """
     import contextlib
 
@@ -124,10 +127,16 @@ def rknn_stage(images: list[Path], stage: str) -> list[dict]:
         if not build_onnx.exists():
             from export_rknn_int8 import normalize_box_channels
             normalize_box_channels(ONNX_PATH, build_onnx, IMGSZ)
-        build_dir = PROJECT_ROOT / "outputs" / "map_build_int8"
+        thresh = 0.999 if cos_thresh is None else cos_thresh
+        tag = "deploy" if cos_thresh is None else ("nohybrid" if thresh <= 0 else f"ct{thresh:g}")
+        build_dir = PROJECT_ROOT / "outputs" / f"map_build_int8_{tag}"
         quant = dict(do_quantization=True, dataset=str(CALIB_TXT))
-        cfg = dict(quantized_dtype="w8a8", quantized_algorithm="normal",
-                   auto_hybrid_cos_thresh=0.999)
+        cfg = dict(quantized_dtype="w8a8", quantized_algorithm="normal")
+        if thresh > 0:
+            # 教训实证：阈值在 config 里只是存着，开关是 build(auto_hybrid=True)——
+            # 部署版曾只配阈值不开关，mAP 三点扫描发现三位小数全同才揭穿
+            cfg["auto_hybrid_cos_thresh"] = thresh
+            quant["auto_hybrid"] = True
 
     yolo = YOLO(str(WEIGHTS))
     yolo.predict(source=str(images[0]), imgsz=IMGSZ, rect=False, verbose=False)
@@ -142,6 +151,8 @@ def rknn_stage(images: list[Path], stage: str) -> list[dict]:
             raise SystemExit("load_onnx 失败")
         if rknn.build(**quant) != 0:
             raise SystemExit("build 失败")
+        rknn_path = build_dir / "model.rknn"  # 落盘量体积：扫描曲线的代价轴
+        rknn.export_rknn(str(rknn_path))
         if rknn.init_runtime() != 0:
             raise SystemExit("init_runtime 失败")
 
@@ -168,7 +179,9 @@ def rknn_stage(images: list[Path], stage: str) -> list[dict]:
             print(f"    {idx + 1}/{len(images)}  {rate:.2f} img/s  "
                   f"剩余约 {(len(images) - idx - 1) / rate / 60:.0f} 分钟", flush=True)
     rknn.release()
-    return dets
+    size_mb = round(rknn_path.stat().st_size / 1e6, 2)
+    print(f"    模型体积 {size_mb} MB（FP16 档 7.45 / 纯 INT8 档 4.81）", flush=True)
+    return dets, size_mb
 
 
 def run_cocoeval(gt: dict, dets: list[dict], img_ids: list[int]) -> dict:
@@ -190,6 +203,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", required=True, choices=["fp32", "fp16", "int8"])
     ap.add_argument("--limit", type=int, default=None, help="固定种子抽 N 张先跑（三档一致才可比）")
+    ap.add_argument("--cos-thresh", type=float, default=None,
+                    help="仅 int8：auto-hybrid 阈值；缺省=部署档 0.999，0=关闭 hybrid（对照）")
+    ap.add_argument("--from-board", metavar="JSON", default=None,
+                    help="跳过推理，直接评估板端 --dir 批量输出的 json（COCO 格式）")
     args = ap.parse_args()
 
     images = image_list(args.limit)
@@ -209,12 +226,21 @@ def main() -> int:
                              f"删除 {GT_JSON.name} 重跑")
         print(f"GT 缓存 {len(gt['annotations'])} 个框（{len(gt['images'])} 张图）")
 
-    if args.stage == "fp32":
+    if args.from_board:
+        dets = json.loads(Path(args.from_board).read_text())["detections"]
+        model_desc = f"板端 {Path(args.from_board).name}"
+        size_mb = None
+    elif args.stage == "fp32":
         dets = pt_stage(images)
         model_desc = WEIGHTS.name
+        size_mb = None
     else:
-        dets = rknn_stage(images, args.stage)
-        model_desc = f"{FP16_RKNN.name if args.stage == 'fp16' else INT8_RKNN.name}（模拟器按部署参数重建）"
+        dets, size_mb = rknn_stage(images, args.stage, args.cos_thresh)
+        if args.stage == "fp16":
+            model_desc = f"{FP16_RKNN.name}（模拟器按部署参数重建）"
+        else:
+            thresh = 0.999 if args.cos_thresh is None else args.cos_thresh
+            model_desc = f"INT8 auto_hybrid_cos_thresh={thresh:g}（模拟器重建）"
     print(f"{args.stage}: {len(dets)} 个检出（{model_desc}）")
 
     metrics = run_cocoeval(gt, dets, [int(p.stem) for p in images])
@@ -222,11 +248,18 @@ def main() -> int:
         "stage": args.stage, "model": model_desc,
         "protocol": {"imgsz": IMGSZ, "conf": CONF_EVAL, "iou_nms": IOU,
                      "max_det": MAX_DET, "letterbox": "square", "excluded_calib": 256,
-                     "limit": args.limit, "subset_seed": SUBSET_SEED if args.limit else None},
-        "images": len(images), "detections": len(dets),
+                     "limit": args.limit, "subset_seed": SUBSET_SEED if args.limit else None,
+                     "cos_thresh": (0.999 if args.cos_thresh is None else args.cos_thresh)
+                     if args.stage == "int8" else None},
+        "images": len(images), "detections": len(dets), "model_size_mb": size_mb,
         "metrics": {k: round(v, 5) for k, v in metrics.items()},
     }
     suffix = f"_{args.limit}" if args.limit else ""
+    if args.from_board:
+        suffix = f"_board_{Path(args.from_board).stem}{suffix}"
+    else:
+        if args.stage == "int8" and args.cos_thresh is not None:
+            suffix += "-nohybrid" if args.cos_thresh <= 0 else f"-ct{args.cos_thresh:g}"
     out = PROJECT_ROOT / "outputs" / f"map_{args.stage}{suffix}.json"
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print(f"报告 -> {out.relative_to(PROJECT_ROOT)}")

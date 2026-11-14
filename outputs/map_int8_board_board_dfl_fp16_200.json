@@ -1,0 +1,32 @@
+{
+  "stage": "int8",
+  "model": "板端 board_dfl_fp16.json",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.45,
+    "max_det": 300,
+    "letterbox": "square",
+    "excluded_calib": 256,
+    "limit": 200,
+    "subset_seed": 0,
+    "cos_thresh": 0.999
+  },
+  "images": 200,
+  "detections": 13539,
+  "model_size_mb": null,
+  "metrics": {
+    "AP": 0.32435,
+    "AP50": 0.57695,
+    "AP75": 0.32246,
+    "APs": 0.08443,
+    "APm": 0.28229,
+    "APl": 0.52418,
+    "AR1": 0.28373,
+    "AR10": 0.41459,
+    "AR100": 0.4408,
+    "ARs": 0.14491,
+    "ARm": 0.39501,
+    "ARl": 0.62812
+  }
+}

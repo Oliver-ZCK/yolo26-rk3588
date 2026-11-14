@@ -1,0 +1,32 @@
+{
+  "stage": "int8",
+  "model": "INT8 auto_hybrid_cos_thresh=0.9995（模拟器重建）",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.45,
+    "max_det": 300,
+    "letterbox": "square",
+    "excluded_calib": 256,
+    "limit": 200,
+    "subset_seed": 0,
+    "cos_thresh": 0.9995
+  },
+  "images": 200,
+  "detections": 15764,
+  "model_size_mb": 7.43,
+  "metrics": {
+    "AP": 0.3918,
+    "AP50": 0.61312,
+    "AP75": 0.417,
+    "APs": 0.14936,
+    "APm": 0.37774,
+    "APl": 0.56691,
+    "AR1": 0.32667,
+    "AR10": 0.48433,
+    "AR100": 0.51221,
+    "ARs": 0.22498,
+    "ARm": 0.51848,
+    "ARl": 0.66104
+  }
+}

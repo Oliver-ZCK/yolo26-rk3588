@@ -12,6 +12,8 @@
 
 #include <rknn_api.h>
 
+#include <dirent.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -124,19 +126,132 @@ Perf Bench(InputSink& sink, const cv::Mat& blob, int loops, int warmup, bool con
   return perf;
 }
 
+std::vector<std::string> ListJpgs(const std::string& dir) {
+  std::vector<std::string> files;
+  DIR* d = opendir(dir.c_str());
+  if (d == nullptr) return files;
+  while (dirent* ent = readdir(d)) {
+    const std::string name = ent->d_name;
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos) continue;
+    const std::string ext = name.substr(dot + 1);
+    if (ext == "jpg" || ext == "JPG" || ext == "jpeg" || ext == "png")
+      files.push_back(dir + "/" + name);
+  }
+  closedir(d);
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
+// mAP 批量评估：目录内全部图片过一遍推理，检出按 COCO result 格式落一个
+// json，PC 侧 pycocotools 直接消费。协议与 src/eval_map.py 对齐（square
+// letterbox 640 / conf=0.001 / NMS iou=0.45 / max_det=300）。模拟器不能
+// load_rknn，hybrid 定点模型的 mAP 只能在真机上量。
+struct EvalCtx {
+  rknn_context ctx;
+  InputSink* sink;
+  rknn_tensor_attr out_attr;
+  int na, nc;
+  bool quant_out;
+  std::string model_path;
+  size_t model_bytes;
+};
+
+int RunEvalDir(const EvalCtx& e, const std::string& dir, const std::string& out_path,
+               float conf) {
+  const std::vector<std::string> files = ListJpgs(dir);
+  if (files.empty()) {
+    std::fprintf(stderr, "目录里没有图片: %s\n", dir.c_str());
+    return 1;
+  }
+
+  std::FILE* f = std::fopen(out_path.c_str(), "w");
+  if (f == nullptr) {
+    std::fprintf(stderr, "写不了输出文件: %s\n", out_path.c_str());
+    return 1;
+  }
+  std::fprintf(f,
+               "{\"model\":\"%s\",\"model_bytes\":%zu,\"images\":%zu,"
+               "\"protocol\":{\"imgsz\":640,\"conf\":%.4f,\"iou_nms\":0.45,\"max_det\":300},"
+               "\"detections\":[",
+               e.model_path.c_str(), e.model_bytes, files.size(), conf);
+
+  double pre_ms = 0, infer_ms = 0, post_ms = 0;
+  size_t n_dets = 0;
+  const size_t elems = static_cast<size_t>(4 + e.nc) * e.na;
+  for (size_t i = 0; i < files.size(); ++i) {
+    cv::Mat img = cv::imread(files[i]);
+    if (img.empty()) {
+      std::fprintf(stderr, "读图失败，跳过: %s\n", files[i].c_str());
+      continue;
+    }
+    // COCO val2017 文件名是前导零数字，atoll 正好还原官方 image_id
+    const long long image_id = std::atoll(BaseName(files[i]).c_str());
+
+    const auto t0 = std::chrono::steady_clock::now();
+    cv::Mat canvas, rgb;
+    const board::LetterboxInfo info = board::Letterbox(img, canvas);
+    cv::cvtColor(canvas, rgb, cv::COLOR_BGR2RGB);
+    cv::Mat blob = e.sink->feed == Feed::Fp16 ? ToFp16(rgb) : rgb;
+    const auto t1 = std::chrono::steady_clock::now();
+    e.sink->Submit(blob);
+    Check(rknn_run(e.ctx, nullptr), "rknn_run");
+    rknn_output out{};
+    out.index = 0;
+    out.want_float = 0;
+    out.is_prealloc = 0;
+    Check(rknn_outputs_get(e.ctx, 1, &out, nullptr), "rknn_outputs_get");
+    const auto t2 = std::chrono::steady_clock::now();
+    const cv::Mat f32 =
+        ToFloat32(out.buf, elems, e.out_attr.type, e.out_attr.zp, e.out_attr.scale);
+    rknn_outputs_release(e.ctx, 1, &out);
+    const std::vector<Det> dets = board::Decode(f32.ptr<float>(), e.na, e.quant_out, info,
+                                                img.rows, img.cols, conf, 300);
+    const auto t3 = std::chrono::steady_clock::now();
+
+    for (const auto& d : dets) {
+      std::fprintf(f,
+                   "%s{\"image_id\":%lld,\"category_id\":%d,"
+                   "\"bbox\":[%.2f,%.2f,%.2f,%.2f],\"score\":%.4f}",
+                   n_dets ? "," : "", image_id, d.cls, d.x1, d.y1, d.x2 - d.x1, d.y2 - d.y1,
+                   d.score);
+      ++n_dets;
+    }
+    pre_ms += Ms(t0, t1);
+    infer_ms += Ms(t1, t2);
+    post_ms += Ms(t2, t3);
+
+    if ((i + 1) % 20 == 0 || i + 1 == files.size())
+      std::printf("  %zu/%zu  平均 pre %.1f / infer %.1f ms\n", i + 1, files.size(),
+                  pre_ms / (i + 1), infer_ms / (i + 1));
+  }
+  std::fprintf(f, "]}");
+  std::fclose(f);
+
+  std::printf("批量评估完成：%zu 张，检出 %zu 条\n", files.size(), n_dets);
+  std::printf("  平均 pre %.2f ms / infer %.2f ms / post %.2f ms\n", pre_ms / files.size(),
+              infer_ms / files.size(), post_ms / files.size());
+  std::printf("  -> %s\n", out_path.c_str());
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   if (argc < 3) {
     std::fprintf(stderr,
                  "用法: %s <model.rknn> <image.jpg> [--int8] [--bench N] [--detail] [--out path]\n"
-                 "            [--zero-copy] [--input-fp16] [--input-u8] [--keep-output]\n",
-                 argv[0]);
+                 "            [--zero-copy] [--input-fp16] [--input-u8] [--keep-output]\n"
+                 "      %s <model.rknn> --dir <image_dir> --eval-out board_eval.json "
+                 "[--eval-conf 0.001]   # mAP 批量评估\n",
+                 argv[0], argv[0]);
     return 1;
   }
   const std::string model_path = argv[1];
   const std::string img_path = argv[2];
   std::string out_path = "board_out.json";
+  std::string eval_dir, eval_out = "board_eval.json";
+  float eval_conf = 0.001f;
   bool int8 = false, detail = false, keep_output = false;
   int bench_loops = 0;
   bool fp16_input = false, force_u8 = false, zero_copy = false;
@@ -147,6 +262,10 @@ int main(int argc, char** argv) {
     else if (!std::strcmp(argv[i], "--input-fp16")) fp16_input = true;
     else if (!std::strcmp(argv[i], "--input-u8")) force_u8 = true;
     else if (!std::strcmp(argv[i], "--zero-copy")) zero_copy = true;
+    else if (!std::strcmp(argv[i], "--dir") && i + 1 < argc) eval_dir = argv[++i];
+    else if (!std::strcmp(argv[i], "--eval-out") && i + 1 < argc) eval_out = argv[++i];
+    else if (!std::strcmp(argv[i], "--eval-conf") && i + 1 < argc)
+      eval_conf = static_cast<float>(std::atof(argv[++i]));
     else if (!std::strcmp(argv[i], "--bench") && i + 1 < argc) bench_loops = std::atoi(argv[++i]);
     else if (!std::strcmp(argv[i], "--out")) out_path = argv[++i];
   }
@@ -239,18 +358,19 @@ int main(int argc, char** argv) {
   if (native_fp16_nhwc && !fp16_input)
     std::printf("  (native 输入就是 FP16/NHWC，已自动改用原生格式喂入；--input-u8 可退回)\n");
 
-  cv::Mat img = cv::imread(img_path);
-  if (img.empty()) {
-    std::fprintf(stderr, "读图失败: %s\n", img_path.c_str());
-    return 1;
-  }
-  cv::Mat canvas;
-  const board::LetterboxInfo info = board::Letterbox(img, canvas);
-  cv::Mat rgb;  // 单独一块缓冲：cvtColor 的通道交换不做原地处理
-  cv::cvtColor(canvas, rgb, cv::COLOR_BGR2RGB);  // RKNN 输入按 RGB 排布
-
+  cv::Mat img, canvas, rgb, blob;
+  board::LetterboxInfo info{};
   const Feed feed = feed_fp16 ? Feed::Fp16 : Feed::U8;
-  cv::Mat blob = feed_fp16 ? ToFp16(rgb) : rgb;
+  if (eval_dir.empty()) {  // --dir 批量模式逐图处理，跳过基准图的读入与预处理
+    img = cv::imread(img_path);
+    if (img.empty()) {
+      std::fprintf(stderr, "读图失败: %s\n", img_path.c_str());
+      return 1;
+    }
+    info = board::Letterbox(img, canvas);
+    cv::cvtColor(canvas, rgb, cv::COLOR_BGR2RGB);  // RKNN 输入按 RGB 排布
+    blob = feed_fp16 ? ToFp16(rgb) : rgb;
+  }
 
   // 零拷贝：输入 buffer 映射到 DDR，数据自己写进去，runtime 不做格式重排。
   // 只支持 FP16+NHWC，因为那才是 native 布局；喂别的格式 runtime 照样要重排。
@@ -267,6 +387,11 @@ int main(int argc, char** argv) {
     zc.Init(ctx, in_native);
   }
   InputSink sink{ctx, zero_copy ? &zc : nullptr, feed};
+
+  if (!eval_dir.empty()) {
+    const EvalCtx e{ctx, &sink, out_attr, na, nc, quant_out, model_path, model.size()};
+    return RunEvalDir(e, eval_dir, eval_out, eval_conf);
+  }
 
   // 输出统一走 want_float=0：拿模型原生数据（FP16 或 INT8），自己转 float32，
   // 省掉 runtime 内置的那次 float 转换（实测 9 ms）。

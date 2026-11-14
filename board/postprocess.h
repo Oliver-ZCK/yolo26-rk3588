@@ -98,7 +98,8 @@ inline LetterboxInfo Letterbox(const cv::Mat& img, cv::Mat& canvas) {
 // _NormalizeCoords，框坐标被归一化到 0~1。不乘回输入尺寸的话框会缩到 1/640
 // 且不报任何错。
 inline std::vector<Det> Decode(const float* p, int na, bool normalized_coords,
-                                const LetterboxInfo& info, int img_h, int img_w) {
+                                const LetterboxInfo& info, int img_h, int img_w,
+                                float conf = kConf, int max_det = 300) {
   std::vector<Det> dets;
   for (int a = 0; a < na; ++a) {
     float best = 0.f;
@@ -110,7 +111,7 @@ inline std::vector<Det> Decode(const float* p, int na, bool normalized_coords,
         cls = c;
       }
     }
-    if (best <= kConf) continue;
+    if (best <= conf) continue;
 
     float cx = p[0 * na + a], cy = p[1 * na + a];
     float bw = p[2 * na + a], bh = p[3 * na + a];
@@ -124,6 +125,8 @@ inline std::vector<Det> Decode(const float* p, int na, bool normalized_coords,
   }
 
   dets = NmsPerClass(std::move(dets));
+  // NmsPerClass 出来时已按分数降序，截断即 ultralytics 的 max_det 语义
+  if (static_cast<int>(dets.size()) > max_det) dets.resize(max_det);
 
   // 反 letterbox 后裁剪到原图范围，与 ultralytics scale_boxes 的 clip_boxes 一致
   for (auto& d : dets) {
