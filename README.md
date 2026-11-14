@@ -1,6 +1,6 @@
 # YOLO26n 端侧部署（RK3588）
 
-把 YOLO26n 部署到 RK3588 NPU。每一级转换（PyTorch → ONNX → RKNN → 板端 C++）都用同一套标准逐框比对验证，**FP16 与 INT8 两条链路均已端到端闭环**：板端单图推理 FP16 20.8 FPS / INT8 **30.5 FPS**，摄像头实时链路单帧处理 FP16 94.9 ms / INT8 **49.1 ms**。
+把 YOLO26n 部署到 RK3588 NPU。每一级转换（PyTorch → ONNX → RKNN → 板端 C++）都用同一套标准逐框比对验证，**FP16 与 INT8 两条链路均已端到端闭环**：板端单图推理 FP16 20.8 FPS / INT8 **30.5 FPS**，摄像头实时链路单帧处理 FP16 94.9 ms / INT8 **49.1 ms**。全量 mAP 标尺：FP16 相对 FP32 零损失，INT8 **−5.4 pt（−13.7%）**。
 
 ## 验证链
 
@@ -64,6 +64,28 @@ YOLO26 导出的是 one2many 单输出 `[1, 84, 8400]`：前 4 通道是框坐�
 - **auto-hybrid**（量化后余弦相似度低于阈值的层保留浮点）：最终模型带 `cos_thresh=0.999` 部署，逐框偏差仍在 17 px 量级，未达预期的个位数 px；阈值扫描与 DFL 分支逐层敏感性分析列入 Roadmap。
 - **w8a16**（激活 int16）能同时绕开类别分数清零与 DFL 噪声，但 RK3588 的量化 config 直接拒绝——那是 RK3576/RK3562 的能力。
 
+## mAP 标尺：三档精度定标（val2017 全量 4744 张）
+
+逐框比对是流水线的安检门，mAP 是最终标尺。`src/eval_map.py` 用 pycocotools COCOeval
+对三档做同协议评估（square letterbox 640 / conf=0.001 / NMS iou=0.45 / max_det=300，
+排除标定 256 张，GT 由标定 zip 自带的 YOLO 标签构建，image_id 与官方一致）：
+
+| 档位 | mAP@0.5:0.95 | mAP@0.5 | AP75 | AP 小 | AP 中 | AP 大 |
+|---|---|---|---|---|---|---|
+| FP32 | 0.3931 | 0.5605 | 0.416 | 0.142 | 0.350 | 0.565 |
+| FP16 | 0.3930（−0.0） | 0.5608 | 0.416 | 0.143 | 0.350 | 0.565 |
+| INT8 | 0.3390（**−5.4 pt，−13.7%**） | 0.5431 | 0.360 | 0.101 | 0.296 | 0.507 |
+
+- **FP16 无损**：四项指标差 ≤3e-4，可当默认精度档；
+- **INT8 的损失几乎全是定位质量**：AP75 掉 5.5 而 mAP50 仅掉 1.7——检出完整性基本没动
+  （检出总数 −18% 来自弱检出被量化噪声压到阈值下），与逐框比对的 17 px 结论交叉印证；
+- **量化噪声的受害者梯度**：小目标相对损失 −29%、中 −16%、大 −10%，是 hybrid
+  阈值扫描的明确优化目标；
+- 与官方 YOLO26n 基准 40.9（one2many+NMS 口径，取自同版本 ultralytics README）差
+  −1.6 pt，归因于 GT 构建（crowd 标注处理）、NMS 口径与权重版本，不影响档间对比；
+- 工具链边界：模拟器不能 `load_rknn`（仅真机可用），FP16/INT8 评估按部署参数在
+  模拟器会话内重建（与已部署模型同源）。本标尺为模拟器数字，板端全量复核见 Roadmap。
+
 ## 目录结构
 
 ```
@@ -76,6 +98,7 @@ YOLO26 导出的是 one2many 单输出 `[1, 84, 8400]`：前 4 通道是框坐�
 │   ├── export_rknn.py        # RKNN FP16 导出 + 模拟器逐张量验证
 │   ├── export_rknn_int8.py   # INT8：坐标归一化改图 + w8a8 标定 + 模拟器验证
 │   ├── prepare_calibration.py  # 标定集：val2017 镜像下载、固定种子抽 256 张
+│   ├── eval_map.py           # mAP 三档评估（COCOeval，模拟器按部署参数重建）
 │   ├── verify_board.py       # 板端结果转统一 schema + 比对（容差按精度档调整）
 │   └── verify_camera.py      # 摄像头实拍帧 vs PyTorch 基准（含量化弱检出规则）
 ├── board/                    # 板端 C++（交叉编译，正点原子 buildroot 工具链）
@@ -125,6 +148,14 @@ python3 src/prepare_calibration.py    # 下载 COCO val2017（优先 hf-mirror �
 python3 src/export_rknn_int8.py       # 改图 + w8a8 标定 + 模拟器验证
 ```
 
+mAP 标尺（需 pycocotools；GT 复用标定 zip 自带的 YOLO 标签，无需另下数据；全量三档合计约 40 分钟）：
+
+```bash
+python3 src/eval_map.py --stage fp32
+python3 src/eval_map.py --stage fp16
+python3 src/eval_map.py --stage int8
+```
+
 标定只需要图片、不需要标注：`prepare_calibration.py` 以 seed=0 抽 256 张写入 `dataset.txt`，数据落在仓库外 `~/datasets/coco`；官方源国内直连仅 ~55 KB/s，脚本优先走 hf-mirror 镜像，已下载过 zip 的用 `--zip` 指入跳过。后续 mAP 评估排除这 256 张即可保证与标定集不重叠。
 
 板端（需 RK3588 与 PC 同网；目标地址用环境变量 `BOARD` / `REMOTE` 覆盖，PC 侧解释器用 `PY` 覆盖；交叉编译用正点原子 buildroot SDK，`build.sh` 默认路径可用 `SDK` 环境变量覆盖）：
@@ -151,9 +182,9 @@ board/deploy_camera.sh models/yolo26n_int8_rknn_model/yolo26n-rk3588-int8.rknn
 
 ## Roadmap
 
-- **COCO val2017 全量 mAP 评估**：FP32 / FP16 / INT8 三档精度标尺（排除标定用的 256 张）。
-- **五规格横评**：n 已闭环，s/m/l/x 复制同一条链路后选型深耕。
-- **hybrid 量化阈值扫描**：0.999 一档实测未达预期，对 DFL 分支做逐层敏感性分析。
+- **五规格横评**：n 已闭环（含 mAP 标尺），s/m/l/x 复制同一条链路后选型深耕。
+- **板端全量 mAP 复核**：mAP 标尺目前是模拟器数字，真机 NPU 舍入差异待量化（预期零点几个点内）。
+- **hybrid 量化阈值扫描**：INT8 损失集中在小目标（AP 小相对 −29%），0.999 一档未达预期，对 DFL 分支做逐层敏感性分析。
 - **摄像头采帧策略放宽**：INT8 后处理（11.6 ms）已远快于采集，丢帧策略可放宽换更高处理帧率。
 - **零拷贝与内存优化实测**：零拷贝路径已实现，待纳入常规 bench。
 

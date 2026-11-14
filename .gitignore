@@ -4,6 +4,12 @@ board/build/
 # RKNN 转换的中间产物（check0/check2/check3 中间图、INT8 标定目录，30MB+）
 outputs/rknn*_build/
 
+# mAP 评估的 GT 缓存（5.6MB）：eval_map.py 从 val2017 的 YOLO 标签确定性重建
+outputs/map_gt.json
+
+# 评估过程日志（结论都在 map_*.json 报告里）
+outputs/*.log
+
 # 板端原始输出：verify_*.py 会把它转成统一 schema 的 stage 文件后即无用
 outputs/*_raw.json
 outputs/board_out.json

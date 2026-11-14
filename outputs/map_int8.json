@@ -1,0 +1,30 @@
+{
+  "stage": "int8",
+  "model": "yolo26n-rk3588-int8.rknn（模拟器按部署参数重建）",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.45,
+    "max_det": 300,
+    "letterbox": "square",
+    "excluded_calib": 256,
+    "limit": null,
+    "subset_seed": null
+  },
+  "images": 4744,
+  "detections": 306037,
+  "metrics": {
+    "AP": 0.33901,
+    "AP50": 0.54306,
+    "AP75": 0.36019,
+    "APs": 0.10115,
+    "APm": 0.29598,
+    "APl": 0.50728,
+    "AR1": 0.28684,
+    "AR10": 0.44451,
+    "AR100": 0.4708,
+    "ARs": 0.20048,
+    "ARm": 0.45759,
+    "ARl": 0.62857
+  }
+}
