@@ -1,0 +1,27 @@
+{
+  "reference": "onnx",
+  "candidate": "rknn",
+  "tensor": {
+    "shape": [
+      84,
+      8400
+    ],
+    "max_abs_diff": 5.480113983154297,
+    "rmse": 0.03349360451102257,
+    "box_max_abs_diff": 5.480113983154297,
+    "box_rmse": 0.15348698198795319,
+    "box_rel_diff": 0.008562678098678589,
+    "cls_max_abs_diff": 0.0015355050563812256,
+    "cls_rmse": 4.737833933177171e-06
+  },
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 0.71,
+    "max_conf_diff": 0.0003,
+    "min_matched_iou": 0.996746
+  },
+  "passed": true
+}

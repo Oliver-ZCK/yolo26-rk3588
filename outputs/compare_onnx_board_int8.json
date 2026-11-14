@@ -1,0 +1,14 @@
+{
+  "reference": "onnx",
+  "candidate": "board_int8",
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 18.76,
+    "max_conf_diff": 0.0435,
+    "min_matched_iou": 0.817274
+  },
+  "passed": true
+}

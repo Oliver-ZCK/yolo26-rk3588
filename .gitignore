@@ -1,0 +1,24 @@
+# 交叉编译产物（build.sh 可重建）
+board/build/
+
+# RKNN 转换的中间产物（check0/check2/check3 中间图、INT8 标定目录，30MB+）
+outputs/rknn*_build/
+
+# 板端原始输出：verify_*.py 会把它转成统一 schema 的 stage 文件后即无用
+outputs/*_raw.json
+outputs/board_out.json
+
+# 模型与权重不进仓库，README「复现」一节的 src/ 流水线可完整重建：
+#   yolo26n.pt        ultralytics 官方下载
+#   yolo26n.onnx      python3 src/export_onnx.py
+#   yolo26n-rk3588.rknn + metadata.yaml   python3 src/export_rknn.py
+models/
+
+# Python
+__pycache__/
+*.pyc
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store

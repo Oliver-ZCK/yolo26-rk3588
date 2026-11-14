@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "stage": "camera_int8_pt",
+  "source": "yolo26n.pt",
+  "source_sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+  "image": "cam_frame.png",
+  "image_sha256": "af3f035f9310f40b22b7edbbad07b18b1632c616145adeda54f4295526d4d70c",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "ultralytics": "8.4.180"
+  },
+  "detections": []
+}

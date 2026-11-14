@@ -1,0 +1,24 @@
+{
+  "reference": "pytorch",
+  "candidate": "onnx",
+  "tensor": {
+    "shape": [
+      1,
+      84,
+      8400
+    ],
+    "max_abs_diff": 0.005035400390625,
+    "box_max_abs_diff": 0.005035400390625,
+    "cls_max_abs_diff": 3.337860107421875e-06
+  },
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 0.0,
+    "max_conf_diff": 0.0,
+    "min_matched_iou": 1.0
+  },
+  "passed": true
+}

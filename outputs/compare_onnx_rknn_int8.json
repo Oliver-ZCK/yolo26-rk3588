@@ -1,0 +1,34 @@
+{
+  "reference": "onnx",
+  "candidate": "rknn_int8",
+  "tensor": {
+    "shape": [
+      84,
+      8400
+    ],
+    "max_abs_diff": 183.49176025390625,
+    "rmse": 1.879552960395813,
+    "box_max_abs_diff": 183.49176025390625,
+    "box_rmse": 8.613192558288574,
+    "box_rel_diff": 0.28670587539672854,
+    "cls_max_abs_diff": 0.5167229175567627,
+    "cls_rmse": 0.0011500618420541286
+  },
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 17.12,
+    "max_conf_diff": 0.0725,
+    "min_matched_iou": 0.805439
+  },
+  "tolerances": {
+    "box_rel": 0.06,
+    "cls": 0.02,
+    "px": 8.0,
+    "conf": 0.05,
+    "note": "粗估占位，待实测收紧"
+  },
+  "passed": false
+}

@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "stage": "board_int8",
+  "source": "yolo26n-rk3588-int8.rknn",
+  "image": "bus.jpg",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "precision": "int8",
+    "runtime_api": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "npu_driver": "0.9.8",
+    "input": "[1,640,640,3] NHWC UINT8",
+    "output": "[1,84,8400]  80 类 x 8400 锚点",
+    "npu_ms": 31.068,
+    "wall_ms": 32.757,
+    "set_ms": 0.995,
+    "run_ms": 31.074,
+    "get_ms": 0.688,
+    "wall_min_ms": 29.793,
+    "wall_max_ms": 40.06,
+    "verified_on": "RK3588 NPU (librknnrt)",
+    "model_sha256": "5fe3ebbcb902e05555382308852a9657c718019fb5a440ed32d30775681bbbed",
+    "image_sha256": "c02019c4979c191eb739ddd944445ef408dad5679acab6fd520ef9d434bfbc63"
+  },
+  "detections": [
+    {
+      "class_id": 5,
+      "class_name": "bus",
+      "confidence": 0.876,
+      "xyxy": [
+        0.16,
+        235.36,
+        810.0,
+        743.38
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8113,
+      "xyxy": [
+        60.75,
+        389.17,
+        247.18,
+        897.18
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8113,
+      "xyxy": [
+        230.86,
+        414.8,
+        347.38,
+        871.55
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.794,
+      "xyxy": [
+        650.33,
+        379.85,
+        804.13,
+        869.22
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.5826,
+      "xyxy": [
+        0.0,
+        556.95,
+        58.42,
+        878.54
+      ]
+    }
+  ]
+}

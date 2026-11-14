@@ -1,0 +1,14 @@
+{
+  "reference": "rknn",
+  "candidate": "board_int8",
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 19.19,
+    "max_conf_diff": 0.0437,
+    "min_matched_iou": 0.814869
+  },
+  "passed": true
+}

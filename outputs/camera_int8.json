@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "stage": "camera_int8",
+  "source": "yolo26n-rk3588-int8.rknn",
+  "image": "cam_frame.png",
+  "image_sha256": "af3f035f9310f40b22b7edbbad07b18b1632c616145adeda54f4295526d4d70c",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "precision": "int8",
+    "runtime_api": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "npu_driver": "0.9.8",
+    "input": "NHWC UINT8",
+    "output": "[1,84,8400]  80 类 x 8400 锚点",
+    "npu_ms": 31.247,
+    "wall_ms": 49.146,
+    "set_ms": 0.0,
+    "run_ms": 0.0,
+    "get_ms": 0.0,
+    "wall_min_ms": 0.0,
+    "wall_max_ms": 0.0,
+    "fps": 9.89,
+    "frames": 198,
+    "dropped": 396,
+    "perf_detail": "预处理 5.47 ms | 推理 32.11 ms | 后处理 11.57 ms | 显示 0.00 ms | 采集 594 帧",
+    "verified_on": "RK3588 NPU (librknnrt), camera"
+  },
+  "detections": [
+    {
+      "class_id": 14,
+      "class_name": "bird",
+      "confidence": 0.2719,
+      "xyxy": [
+        320.47,
+        292.76,
+        386.76,
+        342.47
+      ],
+      "pt_conf": 0.1563
+    }
+  ]
+}

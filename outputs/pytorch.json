@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "stage": "pytorch",
+  "source": "yolo26n.pt",
+  "source_sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+  "image": "bus.jpg",
+  "image_sha256": "c02019c4979c191eb739ddd944445ef408dad5679acab6fd520ef9d434bfbc63",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "ultralytics": "8.4.180"
+  },
+  "detections": [
+    {
+      "class_id": 5,
+      "class_name": "bus",
+      "confidence": 0.903,
+      "xyxy": [
+        9.72,
+        230.64,
+        801.06,
+        748.01
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8548,
+      "xyxy": [
+        47.04,
+        397.75,
+        237.68,
+        901.59
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.845,
+      "xyxy": [
+        223.57,
+        407.0,
+        345.86,
+        861.3
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8373,
+      "xyxy": [
+        669.09,
+        387.31,
+        810.0,
+        880.1
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.5567,
+      "xyxy": [
+        0.0,
+        552.99,
+        59.66,
+        872.6
+      ]
+    }
+  ]
+}

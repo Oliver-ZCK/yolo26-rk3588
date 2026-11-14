@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "stage": "camera",
+  "source": "yolo26n-rk3588.rknn",
+  "image": "cam_frame.png",
+  "image_sha256": "539254f5204f94ca8fcef8363748f339015cf08eb55520059515242968d7b641",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "precision": "fp16",
+    "runtime_api": "2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+    "npu_driver": "0.9.8",
+    "input": "NHWC FLOAT16",
+    "output": "[1,84,8400]  80 类 x 8400 锚点",
+    "npu_ms": 41.791,
+    "wall_ms": 94.935,
+    "set_ms": 0.0,
+    "run_ms": 0.0,
+    "get_ms": 0.0,
+    "wall_min_ms": 0.0,
+    "wall_max_ms": 0.0,
+    "fps": 9.91,
+    "frames": 298,
+    "dropped": 596,
+    "perf_detail": "预处理 13.94 ms | 推理 65.59 ms | 后处理 15.41 ms | 显示 0.00 ms | 采集 894 帧",
+    "verified_on": "RK3588 NPU (librknnrt), camera"
+  },
+  "detections": [
+    {
+      "class_id": 39,
+      "class_name": "bottle",
+      "confidence": 0.8105,
+      "xyxy": [
+        224.0,
+        220.62,
+        273.0,
+        346.38
+      ]
+    },
+    {
+      "class_id": 39,
+      "class_name": "bottle",
+      "confidence": 0.3396,
+      "xyxy": [
+        269.12,
+        236.81,
+        304.88,
+        357.69
+      ]
+    }
+  ]
+}

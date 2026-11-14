@@ -1,0 +1,14 @@
+{
+  "reference": "camera_pt",
+  "candidate": "camera",
+  "boxes": {
+    "ref_count": 2,
+    "cand_count": 2,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 0.13,
+    "max_conf_diff": 0.0073,
+    "min_matched_iou": 0.993404
+  },
+  "passed": true
+}

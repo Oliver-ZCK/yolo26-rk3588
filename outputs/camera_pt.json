@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "stage": "camera_pt",
+  "source": "yolo26n.pt",
+  "source_sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+  "image": "cam_frame.png",
+  "image_sha256": "539254f5204f94ca8fcef8363748f339015cf08eb55520059515242968d7b641",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "ultralytics": "8.4.180"
+  },
+  "detections": [
+    {
+      "class_id": 39,
+      "class_name": "bottle",
+      "confidence": 0.8135,
+      "xyxy": [
+        223.96,
+        220.62,
+        272.94,
+        346.48
+      ]
+    },
+    {
+      "class_id": 39,
+      "class_name": "bottle",
+      "confidence": 0.3469,
+      "xyxy": [
+        269.04,
+        236.81,
+        304.75,
+        357.78
+      ]
+    }
+  ]
+}

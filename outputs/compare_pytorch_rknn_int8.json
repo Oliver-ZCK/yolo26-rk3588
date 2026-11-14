@@ -1,0 +1,34 @@
+{
+  "reference": "pytorch",
+  "candidate": "rknn_int8",
+  "tensor": {
+    "shape": [
+      84,
+      8400
+    ],
+    "max_abs_diff": 183.49234008789062,
+    "rmse": 1.8795502185821533,
+    "box_max_abs_diff": 183.49234008789062,
+    "box_rmse": 8.613180160522461,
+    "box_rel_diff": 0.2867067813873291,
+    "cls_max_abs_diff": 0.5167214274406433,
+    "cls_rmse": 0.0011500591645017266
+  },
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 17.12,
+    "max_conf_diff": 0.0725,
+    "min_matched_iou": 0.805439
+  },
+  "tolerances": {
+    "box_rel": 0.06,
+    "cls": 0.02,
+    "px": 8.0,
+    "conf": 0.05,
+    "note": "粗估占位，待实测收紧"
+  },
+  "passed": false
+}

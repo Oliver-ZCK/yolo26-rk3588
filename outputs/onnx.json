@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "stage": "onnx",
+  "source": "yolo26n.onnx",
+  "source_sha256": "ebc5e37dc747822a6e155018659a35a07d89723ff59036027248904406ffac8d",
+  "image": "bus.jpg",
+  "image_sha256": "c02019c4979c191eb739ddd944445ef408dad5679acab6fd520ef9d434bfbc63",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "opset": 19
+  },
+  "detections": [
+    {
+      "class_id": 5,
+      "class_name": "bus",
+      "confidence": 0.903,
+      "xyxy": [
+        9.72,
+        230.64,
+        801.06,
+        748.01
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8548,
+      "xyxy": [
+        47.04,
+        397.75,
+        237.68,
+        901.59
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.845,
+      "xyxy": [
+        223.57,
+        407.0,
+        345.86,
+        861.3
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8373,
+      "xyxy": [
+        669.09,
+        387.31,
+        810.0,
+        880.1
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.5567,
+      "xyxy": [
+        0.0,
+        552.99,
+        59.66,
+        872.6
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "reference": "camera_int8_pt",
+  "candidate": "camera_int8",
+  "boxes": {
+    "ref_count": 0,
+    "cand_count": 1,
+    "missing": [],
+    "extra": [
+      {
+        "class_id": 14,
+        "class_name": "bird",
+        "confidence": 0.2719,
+        "xyxy": [
+          320.47,
+          292.76,
+          386.76,
+          342.47
+        ],
+        "pt_conf": 0.1563
+      }
+    ],
+    "max_coord_diff_px": null,
+    "max_conf_diff": null,
+    "min_matched_iou": null
+  },
+  "weak_detections": [
+    {
+      "class_id": 14,
+      "class_name": "bird",
+      "confidence": 0.2719,
+      "xyxy": [
+        320.47,
+        292.76,
+        386.76,
+        342.47
+      ],
+      "pt_conf": 0.1563
+    }
+  ],
+  "passed": true
+}

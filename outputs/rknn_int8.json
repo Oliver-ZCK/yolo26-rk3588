@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "stage": "rknn_int8",
+  "source": "yolo26n-rk3588-int8.rknn",
+  "source_sha256": "5fe3ebbcb902e05555382308852a9657c718019fb5a440ed32d30775681bbbed",
+  "image": "bus.jpg",
+  "image_sha256": "c02019c4979c191eb739ddd944445ef408dad5679acab6fd520ef9d434bfbc63",
+  "imgsz": 640,
+  "conf": 0.25,
+  "iou": 0.45,
+  "letterbox": "square",
+  "inference_path": "one2many + NMS",
+  "env": {
+    "rknn_toolkit2": "2.3.2",
+    "target_platform": "rk3588",
+    "quantized_dtype": "w8a8",
+    "quantize_algorithm": "normal",
+    "auto_hybrid_cos_thresh": 0.999,
+    "calibration_images": 256,
+    "verified_on": "rknn-toolkit2 simulator"
+  },
+  "detections": [
+    {
+      "class_id": 5,
+      "class_name": "bus",
+      "confidence": 0.8329,
+      "xyxy": [
+        0.0,
+        226.04,
+        797.14,
+        752.7
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.8027,
+      "xyxy": [
+        42.11,
+        398.49,
+        228.53,
+        887.86
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.7854,
+      "xyxy": [
+        668.97,
+        379.85,
+        810.0,
+        869.22
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.7725,
+      "xyxy": [
+        237.86,
+        424.12,
+        340.39,
+        862.23
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "person",
+      "confidence": 0.561,
+      "xyxy": [
+        0.0,
+        552.29,
+        53.76,
+        864.56
+      ]
+    }
+  ]
+}

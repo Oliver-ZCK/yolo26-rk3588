@@ -1,0 +1,27 @@
+{
+  "reference": "pytorch",
+  "candidate": "rknn",
+  "tensor": {
+    "shape": [
+      84,
+      8400
+    ],
+    "max_abs_diff": 5.480075836181641,
+    "rmse": 0.03349574655294418,
+    "box_max_abs_diff": 5.480075836181641,
+    "box_rmse": 0.15349680185317993,
+    "box_rel_diff": 0.008562618494033813,
+    "cls_max_abs_diff": 0.001536548137664795,
+    "cls_rmse": 4.740141321235569e-06
+  },
+  "boxes": {
+    "ref_count": 5,
+    "cand_count": 5,
+    "missing": [],
+    "extra": [],
+    "max_coord_diff_px": 0.71,
+    "max_conf_diff": 0.0003,
+    "min_matched_iou": 0.996746
+  },
+  "passed": true
+}
