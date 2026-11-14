@@ -1,6 +1,6 @@
 # YOLO26n 端侧部署（RK3588）
 
-把 YOLO26n 部署到 RK3588 NPU。每一级转换（PyTorch → ONNX → RKNN → 板端 C++）都用同一套标准逐框比对验证，**FP16 与 INT8 两条链路均已端到端闭环**：板端单图推理 FP16 20.8 FPS / INT8 **30.5 FPS**，摄像头实时链路单帧处理 FP16 94.9 ms / INT8 **49.1 ms**。精度标尺：FP16 相对 FP32 零损失（真机一致）；INT8 模拟器 −5.4 pt，**真机再低 7 pt——模拟器的量化数字系统性乐观**。
+把 YOLO26n 部署到 RK3588 NPU。每一级转换（PyTorch → ONNX → RKNN → 板端 C++）都用同一套标准逐框比对验证，**FP16 与 INT8 两条链路均已端到端闭环**：板端单图推理 FP16 20.8 FPS / INT8 **30.5 FPS**，摄像头实时链路单帧处理 FP16 94.9 ms / INT8 **49.1 ms**。精度标尺（val2017 全量 4744 张，真机最终口径）：FP16 相对 FP32 零损失（0.3937 vs 0.3931）；INT8 **0.2752（−11.9 pt，相对 −30%）**，模拟器口径 0.3390 **系统性乐观 6.4 pt**——量化指标必须真机复核。
 
 ## 验证链
 
@@ -85,7 +85,7 @@ YOLO26 导出的是 one2many 单输出 `[1, 84, 8400]`：前 4 通道是框坐�
   −1.6 pt，归因于 GT 构建（crowd 标注处理）、NMS 口径与权重版本，不影响档间对比；
 - 工具链边界：模拟器不能 `load_rknn`（仅真机可用），FP16/INT8 评估按部署参数在
   模拟器会话内重建（与已部署模型同源）。本标尺为模拟器数字——板端 200 张复核
-  发现 INT8 存在 7 pt 乐观偏差，见下一节。
+  发现 INT8 存在乐观偏差（200 张 7 pt、全量坐实 6.4 pt），见下一节。
 
 ## 量化优化：hybrid 扫描、DFL 定点与真机复核
 
@@ -132,6 +132,26 @@ hybrid 定点模型的 mAP 只能在真机上量。
 - w/h 均值 6.7 px 对 20 px 的小目标即 IoU 碎裂，AP小 腰斩由此而来；
 - 结论：真机 NPU 的 INT8 执行噪声经由 DFL 解码几何放大成框坐标发散，PTQ
   参数层无法压制——与「DFL 定点仅 +0.4 pt」的扫描结论互为因果闭环。
+
+### 板端全量复核（4744 张）：最终口径
+
+200 张子集定方向，全量给最终数字——FP16 / INT8 各跑一遍全量评估
+（4744 张，排除标定 256，与模拟器标尺同协议同 GT）：
+
+| 档位 | 体积 | mAP | mAP50 | AP75 | AP小 | AP中 | AP大 |
+|---|---|---|---|---|---|---|---|
+| FP32 基准（PC） | — | 0.3931 | — | — | — | — | — |
+| FP16 板端 | 7.45 MB | **0.3937** | 0.5612 | 0.4156 | 0.1415 | 0.3512 | 0.5662 |
+| INT8 板端 | 4.81 MB | **0.2752** | 0.5050 | 0.2659 | 0.0547 | 0.2099 | 0.4601 |
+
+- **FP16 板端 0.3937 ≥ FP32 基准 0.3931**：板端 JPEG 解码、letterbox、前后处理
+  整条链路与 PC 侧对齐到无损——INT8 的全部损失只能归给量化本身，工程链路无嫌疑；
+- **INT8 真机最终口径：mAP −11.9 pt（相对 −30%）**，损失集中在定位（AP75 −36%）
+  与小目标（AP小 −61%），与归因结论定量吻合；
+- **模拟器乐观偏差在全量坐实：6.4 pt**（0.3390 vs 0.2752）。200 张子集的 delta
+  （12.2 pt）与全量（11.9 pt）基本一致——配对比较法定方向可靠，绝对值必须全量；
+- 全量真机吞吐（单帧含 pre/infer/post 完整链路）：FP16 88.1 ms / INT8 46.7 ms，
+  端到端 1.9×、纯 NPU 2.4×；4744 张 FP16 跑 7m53s、INT8 跑 4m53s。
 
 ## 目录结构
 
@@ -202,13 +222,17 @@ python3 src/eval_map.py --stage fp32
 python3 src/eval_map.py --stage fp16
 python3 src/eval_map.py --stage int8
 python3 src/eval_map.py --stage int8 --cos-thresh 0.9995   # auto-hybrid 阈值扫描（0=关闭，作纯 INT8 对照）
-python3 src/eval_map.py --stage int8 --from-board outputs/board_int8_eval.json --limit 200   # 评估板端批量输出
+python3 src/eval_map.py --stage int8 --from-board outputs/board_int8_eval.json --limit 200   # 板端批量输出（子集试点）
+python3 src/eval_map.py --stage fp16 --from-board outputs/board_fp16_full.json   # 板端全量 4744 张
+python3 src/eval_map.py --stage int8 --from-board outputs/board_int8_full.json
 ```
 
 板端批量评估（COCO 协议与 PC 侧一致，见「量化优化」一节）：
 
 ```bash
-# 板上：./yolo26 <model.rknn> x --dir <images> --eval-out eval.json   # conf=0.001 可用 --eval-conf 覆盖
+rsync -a --files-from=outputs/full_images.txt ~/datasets/coco/images/val2017/ $BOARD:/home/zck/yolo26/eval_full/images/
+# 板上：./yolo26 <model.rknn> x --dir ~/yolo26/eval_full/images --eval-out ~/yolo26/eval_full/<tag>.json
+#   conf=0.001 可用 --eval-conf 覆盖；FP16 模型与 INT8 模型共用同一命令
 ```
 标定只需要图片、不需要标注：`prepare_calibration.py` 以 seed=0 抽 256 张写入 `dataset.txt`，数据落在仓库外 `~/datasets/coco`；官方源国内直连仅 ~55 KB/s，脚本优先走 hf-mirror 镜像，已下载过 zip 的用 `--zip` 指入跳过。后续 mAP 评估排除这 256 张即可保证与标定集不重叠。
 
@@ -236,9 +260,10 @@ board/deploy_camera.sh models/yolo26n_int8_rknn_model/yolo26n-rk3588-int8.rknn
 
 ## Roadmap
 
-- **真机 INT8 差异归因**：板端比模拟器低 7 pt（AP小 腰斩），对比 8400 锚点的输出张量定位发散起始的层；板端评估基建已就绪（`--dir` 批量 + `--from-board`）。
+已完成：FP16/INT8 双精度部署闭环、mAP 三档标尺、hybrid 扫描、真机复核与
+差异归因、板端全量复核（4744 张最终口径）。当前待办：
+
 - **量化感知训练（QAT）**：PTQ 路线已实测到顶（DFL 定点仅 +0.4 pt），真机 INT8 损失要往下打只剩 QAT。
-- **板端全量 mAP 复核**：200 张子集已完成（发现 INT8 乐观偏差 7 pt），全量 4744 张待跑。
 - **五规格横评**：n 已闭环（含标尺与真机复核），s/m/l/x 复制同一条链路后选型深耕。
 - **摄像头采帧策略放宽**：INT8 后处理（11.6 ms）已远快于采集，丢帧策略可放宽换更高处理帧率。
 - **零拷贝与内存优化实测**：零拷贝路径已实现，待纳入常规 bench。

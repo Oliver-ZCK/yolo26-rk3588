@@ -1,0 +1,32 @@
+{
+  "stage": "fp16",
+  "model": "板端 board_fp16_full.json",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.45,
+    "max_det": 300,
+    "letterbox": "square",
+    "excluded_calib": 256,
+    "limit": null,
+    "subset_seed": null,
+    "cos_thresh": null
+  },
+  "images": 4744,
+  "detections": 589031,
+  "model_size_mb": null,
+  "metrics": {
+    "AP": 0.39366,
+    "AP50": 0.56115,
+    "AP75": 0.41556,
+    "APs": 0.14148,
+    "APm": 0.3512,
+    "APl": 0.56625,
+    "AR1": 0.32394,
+    "AR10": 0.50652,
+    "AR100": 0.53968,
+    "ARs": 0.27355,
+    "ARm": 0.53485,
+    "ARl": 0.69075
+  }
+}

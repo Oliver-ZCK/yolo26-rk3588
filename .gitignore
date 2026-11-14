@@ -14,6 +14,9 @@ outputs/map_build_*/
 # 真机归因的原始张量 dump（diff_raw.py 随时可重新抓取）
 outputs/*.int8*
 
+# 板端批量评估的原始检出（28~50MB；mAP 报告 map_*_full.json 入库，检出可重跑重建）
+outputs/board_*_full.json
+
 # 评估过程日志（结论都在 map_*.json 报告里）
 outputs/*.log
 
