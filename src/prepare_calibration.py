@@ -11,6 +11,8 @@
 用法:
     python3 src/prepare_calibration.py                # 缺 zip 时自动下载
     python3 src/prepare_calibration.py --zip PATH    # 用已下载好的 zip
+    python3 src/prepare_calibration.py --annotations          # 下载官方标注包，抽 instances_val2017.json
+    python3 src/prepare_calibration.py --annotations-zip PATH # 已下载好的标注 zip（免下载）
 """
 
 import argparse
@@ -33,13 +35,21 @@ SOURCES = [
     "https://hf-mirror.com/datasets/LibreYOLO/coco-val2017/resolve/main/coco-val2017.zip",
     "https://images.cocodataset.org/zips/val2017.zip",
 ]
+# 官方标注源：hf-mirror 镜像单文件在前（官方 S3 有 DNS 污染，证书主机名不符）；
+# zip 为官方整包兜底（官方源慢时可 Windows 侧下载后 --annotations-zip 指入）
+ANN_SOURCES = [
+    "https://hf-mirror.com/datasets/sashankSaya/coco2017/resolve/main/annotations/instances_val2017.json",
+    "https://images.cocodataset.org/annotations/annotations_trainval2017.zip",
+]
+DEFAULT_ANN_ZIP = DATA_ROOT / "downloads" / "annotations_trainval2017.zip"
+ANN_JSON = DATA_ROOT / "annotations" / "instances_val2017.json"
 N_CALIB = 256
 SEED = 0
 
 
-def download(dst: Path) -> None:
+def download(dst: Path, sources: list[str] = SOURCES) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
-    for url in SOURCES:
+    for url in sources:
         print(f"下载 {url}")
         try:
             def hook(n: int, bs: int, total: int) -> None:
@@ -53,11 +63,48 @@ def download(dst: Path) -> None:
     raise SystemExit("所有源都下载失败")
 
 
+def fetch_annotations() -> None:
+    """按源顺序取 instances_val2017.json：.json 直下，.zip 下载后只抽 val 标注。"""
+    ANN_JSON.parent.mkdir(parents=True, exist_ok=True)
+    for url in ANN_SOURCES:
+        print(f"尝试 {url}")
+        try:
+            if url.endswith(".zip"):
+                download(DEFAULT_ANN_ZIP, [url])
+                with zipfile.ZipFile(DEFAULT_ANN_ZIP) as z:
+                    member = next(n for n in z.namelist() if n.endswith("instances_val2017.json"))
+                    z.extract(member, DATA_ROOT)  # 跳过 ~450MB 的 train 标注解压
+            else:
+                download(ANN_JSON, [url])
+            return
+        except (Exception, SystemExit) as e:
+            print(f"  该源失败: {e}")
+    raise SystemExit("所有标注源都下载失败")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--zip", type=Path, default=DEFAULT_ZIP, help="已下载的 val2017.zip")
     ap.add_argument("--num", type=int, default=N_CALIB, help="标定图数量")
+    ap.add_argument("--annotations", action="store_true",
+                    help="下载官方标注包，抽 instances_val2017.json（eval_map.py --gt official 用）")
+    ap.add_argument("--annotations-zip", type=Path, default=None,
+                    help="已下载的 annotations_trainval2017.zip，免下载")
     args = ap.parse_args()
+
+    if args.annotations or args.annotations_zip:
+        if ANN_JSON.exists():
+            print(f"官方标注已存在: {ANN_JSON}")
+            return 0
+        if args.annotations_zip:
+            zip_path = args.annotations_zip
+            with zipfile.ZipFile(zip_path) as z:  # 只抽 val 标注，跳过 ~450MB 的 train 标注解压
+                member = next(n for n in z.namelist() if n.endswith("instances_val2017.json"))
+                z.extract(member, DATA_ROOT)
+        else:
+            fetch_annotations()
+        print(f"官方标注 -> {ANN_JSON}")
+        return 0
 
     if not IMAGES_DIR.is_dir() or len(list(IMAGES_DIR.glob("*.jpg"))) < 5000:
         zip_path = args.zip

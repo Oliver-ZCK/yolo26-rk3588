@@ -20,6 +20,9 @@ outputs/board_*_full.json
 # 评估过程日志（结论都在 map_*.json 报告里）
 outputs/*.log
 
+# val_official.py 每次运行确定性生成的数据 yaml
+outputs/coco_val_official.yaml
+
 # 板端原始输出：verify_*.py 会把它转成统一 schema 的 stage 文件后即无用
 outputs/*_raw.json
 outputs/board_out.json

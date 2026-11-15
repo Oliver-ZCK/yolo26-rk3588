@@ -1,0 +1,33 @@
+{
+  "stage": "fp32",
+  "model": "yolo26n.pt（官方协议对照 rect+iou0.7）",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.7,
+    "max_det": 300,
+    "letterbox": "rect",
+    "gt": "official",
+    "excluded_calib": 0,
+    "limit": null,
+    "subset_seed": null,
+    "cos_thresh": null
+  },
+  "images": 5000,
+  "detections": 596198,
+  "model_size_mb": null,
+  "metrics": {
+    "AP": 0.40329,
+    "AP50": 0.56032,
+    "AP75": 0.43598,
+    "APs": 0.19779,
+    "APm": 0.44426,
+    "APl": 0.58577,
+    "AR1": 0.32248,
+    "AR10": 0.52299,
+    "AR100": 0.57182,
+    "ARs": 0.34499,
+    "ARm": 0.63473,
+    "ARl": 0.75523
+  }
+}

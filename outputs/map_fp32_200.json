@@ -7,12 +7,15 @@
     "iou_nms": 0.45,
     "max_det": 300,
     "letterbox": "square",
+    "gt": "yolo",
     "excluded_calib": 256,
     "limit": 200,
-    "subset_seed": 0
+    "subset_seed": 0,
+    "cos_thresh": null
   },
   "images": 200,
   "detections": 15209,
+  "model_size_mb": null,
   "metrics": {
     "AP": 0.43956,
     "AP50": 0.62306,

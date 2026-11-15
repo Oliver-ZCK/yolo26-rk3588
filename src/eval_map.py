@@ -2,15 +2,20 @@
 
 三档必须同协议：square letterbox 640、conf=0.001（低阈值让 PR 曲线完整）、
 NMS iou=0.45、max_det=300——任何一档协议不同，「掉点」就掺了水分。
-GT 由 val2017 的 YOLO 标签构建成 COCO json（标定 zip 里自带，不必另下
-官方标注包）；标定用的 256 张从评估集排除，两者不重叠。
+GT 两套标尺：--gt official 用官方 instances_val2017.json（含 iscrowd 人群
+标注与 ignore 规则，可与官方基准对表，缺省）；--gt yolo 用标定 zip 自带
+YOLO 标签构建的旧标尺（历史报告口径，全部 iscrowd=0）。部署标尺下标定
+256 张默认排除；--protocol official 为 FP32 官方协议对照（rect + NMS
+iou 0.7，全量 5000 张含标定——FP32 与标定集无污染一说）。
 
 FP32 走 ultralytics predict；FP16/INT8 走 rknn-toolkit2 模拟器，输入路径
 与 export_rknn(_int8).py 已验证的一致。mAP 计算用 pycocotools COCOeval。
 
 用法:
-    python3 src/eval_map.py --stage fp32 [--limit 500]
-    python3 src/eval_map.py --stage fp16 [--limit 500]
+    python3 src/eval_map.py --stage fp32                          # 官方 GT，部署标尺
+    python3 src/eval_map.py --stage fp32 --gt yolo                # 旧 YOLO 标签 GT（历史口径）
+    python3 src/eval_map.py --stage fp32 --protocol official      # 官方协议对照（rect + iou 0.7）
+    python3 src/eval_map.py --stage fp16 [--limit 500] [--gt yolo]
     python3 src/eval_map.py --stage int8 [--limit 500] [--cos-thresh 0.99|0]
 """
 
@@ -36,7 +41,8 @@ DATA_ROOT = Path.home() / "datasets" / "coco"
 IMAGES_DIR = DATA_ROOT / "images" / "val2017"
 LABELS_DIR = DATA_ROOT / "labels" / "val2017"
 CALIB_TXT = PROJECT_ROOT / "outputs" / "rknn_int8_build" / "dataset.txt"
-GT_JSON = PROJECT_ROOT / "outputs" / "map_gt.json"
+GT_JSON = PROJECT_ROOT / "outputs" / "map_gt.json"          # --gt yolo 的缓存
+ANN_JSON = DATA_ROOT / "annotations" / "instances_val2017.json"  # --gt official
 
 WEIGHTS = PROJECT_ROOT / "models" / "yolo26n.pt"
 ONNX_PATH = PROJECT_ROOT / "models" / "yolo26n.onnx"
@@ -44,15 +50,21 @@ FP16_RKNN = PROJECT_ROOT / "models" / "yolo26n_fp16_rknn_model" / "yolo26n-rk358
 INT8_RKNN = PROJECT_ROOT / "models" / "yolo26n_int8_rknn_model" / "yolo26n-rk3588-int8.rknn"
 
 # COCO 协议的评估口径：conf 压到 0.001 让 PR 曲线覆盖全区间，
-# NMS iou 沿用本工程各阶段共用的 0.45
+# NMS iou 沿用本工程各阶段共用的 0.45；官方协议对照用 ultralytics val 的 0.7
 CONF_EVAL = 0.001
 MAX_DET = 300
 SUBSET_SEED = 0
+IOU_OFFICIAL = 0.7
 
 
-def image_list(limit: int | None) -> list[Path]:
-    """评估集：val2017 全量，排除标定 256 张；--limit 取固定种子的子集。"""
-    calib = {Path(line.strip()).name for line in CALIB_TXT.read_text().splitlines() if line.strip()}
+def image_list(limit: int | None, exclude_calib: bool = True) -> list[Path]:
+    """评估集：val2017 全量，部署标尺排除标定 256 张；--limit 取固定种子的子集。
+
+    官方协议对照不排除——FP32 与标定集无污染一说，全量 5000 才是官方口径。
+    """
+    calib = set()
+    if exclude_calib:
+        calib = {Path(line.strip()).name for line in CALIB_TXT.read_text().splitlines() if line.strip()}
     images = sorted(p for p in IMAGES_DIR.glob("*.jpg") if p.name not in calib)
     if limit:
         images = sorted(random.Random(SUBSET_SEED).sample(images, limit))
@@ -85,15 +97,20 @@ def build_gt(images: list[Path], names: dict) -> dict:
     return {"images": imgs, "annotations": anns, "categories": cat}
 
 
-def pt_stage(images: list[Path]) -> list[dict]:
-    """分块预测：conf=0.001 时 CPU NMS 的中间张量大，一次性喂全量被 OOM 杀过。"""
+def pt_stage(images: list[Path], protocol: str = "deploy") -> list[dict]:
+    """分块预测：conf=0.001 时 CPU NMS 的中间张量大，一次性喂全量被 OOM 杀过。
+
+    deploy：square letterbox + NMS iou 0.45，与 FP16/INT8/板端同口径；
+    official：rect 保长宽比 + NMS iou 0.7——ultralytics val 的默认口径，对表官方基准。
+    """
+    iou_nms, rect = (IOU, False) if protocol == "deploy" else (IOU_OFFICIAL, True)
     model = YOLO(str(WEIGHTS))
     dets = []
     chunk = 100
     for i in range(0, len(images), chunk):
         batch = images[i:i + chunk]
         results = model.predict(source=[str(p) for p in batch], imgsz=IMGSZ, conf=CONF_EVAL,
-                                iou=IOU, rect=False, max_det=MAX_DET, stream=True, verbose=False)
+                                iou=iou_nms, rect=rect, max_det=MAX_DET, stream=True, verbose=False)
         for p, r in zip(batch, results):
             img_id = int(p.stem)
             for b in r.boxes:
@@ -207,32 +224,61 @@ def main() -> int:
                     help="仅 int8：auto-hybrid 阈值；缺省=部署档 0.999，0=关闭 hybrid（对照）")
     ap.add_argument("--from-board", metavar="JSON", default=None,
                     help="跳过推理，直接评估板端 --dir 批量输出的 json（COCO 格式）")
+    ap.add_argument("--gt", choices=["official", "yolo"], default="official",
+                    help="GT 标尺：official=官方标注含 iscrowd（缺省，可与官方对表）；"
+                         "yolo=标定 zip 标签构建的旧标尺（历史报告口径）")
+    ap.add_argument("--protocol", choices=["deploy", "official"], default="deploy",
+                    help="deploy=square 640 + NMS iou 0.45（部署标尺，缺省）；"
+                         "official=rect + NMS iou 0.7（ultralytics val 口径，仅 fp32，对表官方基准）")
     args = ap.parse_args()
 
-    images = image_list(args.limit)
-    print(f"评估集 {len(images)} 张（排除标定 256）  协议 conf={CONF_EVAL} iou={IOU} max_det={MAX_DET}")
+    if args.protocol == "official":
+        if args.gt != "official":
+            raise SystemExit("--protocol official 需要官方 GT（--gt official）")
+        if args.stage != "fp32":
+            raise SystemExit("official 协议对照仅支持 --stage fp32（rect 与板端 square 640 不可比）")
+    exclude_calib = args.protocol != "official"
+    iou_nms = IOU if args.protocol == "deploy" else IOU_OFFICIAL
 
-    full = image_list(None)
-    if not GT_JSON.exists():
-        names = YOLO(str(WEIGHTS)).names
-        t0 = time.time()
-        gt = build_gt(full, names)
-        GT_JSON.write_text(json.dumps(gt))
-        print(f"GT 构建（全量缓存）{len(gt['annotations'])} 个框 -> {GT_JSON.name}（{time.time() - t0:.0f}s）")
+    images = image_list(args.limit, exclude_calib)
+    print(f"评估集 {len(images)} 张（{'排除标定 256' if exclude_calib else '官方全量口径，含标定 256'}）"
+          f"  协议 conf={CONF_EVAL} iou={iou_nms} max_det={MAX_DET} "
+          f"{'rect' if args.protocol == 'official' else 'square'}  GT={args.gt}")
+
+    cat_ids = None
+    if args.gt == "official":
+        if not ANN_JSON.exists():
+            raise SystemExit(f"官方标注不存在: {ANN_JSON}\n"
+                             "python3 src/prepare_calibration.py --annotations 下载，"
+                             "或已下载的 zip 用 --annotations-zip 指入")
+        gt = json.loads(ANN_JSON.read_text())
+        # ultralytics 类别序 = 官方类目 id 升序；检出的 0~79 序号按此映射回官方 id 再评估
+        cat_ids = sorted(c["id"] for c in gt["categories"])
+        if len(cat_ids) != 80:
+            raise SystemExit(f"官方标注类别数异常: {len(cat_ids)}")
+        print(f"GT 官方标注：{len(gt['images'])} 张 / {len(gt['annotations'])} 框（含 iscrowd）")
     else:
-        gt = json.loads(GT_JSON.read_text())
-        if len(gt["images"]) != len(full):
-            raise SystemExit(f"GT 缓存 {len(gt['images'])} 张与全量 {len(full)} 张不一致，"
-                             f"删除 {GT_JSON.name} 重跑")
-        print(f"GT 缓存 {len(gt['annotations'])} 个框（{len(gt['images'])} 张图）")
+        full = image_list(None, exclude_calib)
+        if not GT_JSON.exists():
+            names = YOLO(str(WEIGHTS)).names
+            t0 = time.time()
+            gt = build_gt(full, names)
+            GT_JSON.write_text(json.dumps(gt))
+            print(f"GT 构建（全量缓存）{len(gt['annotations'])} 个框 -> {GT_JSON.name}（{time.time() - t0:.0f}s）")
+        else:
+            gt = json.loads(GT_JSON.read_text())
+            if len(gt["images"]) != len(full):
+                raise SystemExit(f"GT 缓存 {len(gt['images'])} 张与全量 {len(full)} 张不一致，"
+                                 f"删除 {GT_JSON.name} 重跑")
+            print(f"GT 缓存 {len(gt['annotations'])} 个框（{len(gt['images'])} 张图）")
 
     if args.from_board:
         dets = json.loads(Path(args.from_board).read_text())["detections"]
         model_desc = f"板端 {Path(args.from_board).name}"
         size_mb = None
     elif args.stage == "fp32":
-        dets = pt_stage(images)
-        model_desc = WEIGHTS.name
+        dets = pt_stage(images, args.protocol)
+        model_desc = WEIGHTS.name + ("（官方协议对照 rect+iou0.7）" if args.protocol == "official" else "")
         size_mb = None
     else:
         dets, size_mb = rknn_stage(images, args.stage, args.cos_thresh)
@@ -243,11 +289,15 @@ def main() -> int:
             model_desc = f"INT8 auto_hybrid_cos_thresh={thresh:g}（模拟器重建）"
     print(f"{args.stage}: {len(dets)} 个检出（{model_desc}）")
 
+    if cat_ids is not None:
+        for d in dets:
+            d["category_id"] = cat_ids[d["category_id"]]
     metrics = run_cocoeval(gt, dets, [int(p.stem) for p in images])
     report = {
         "stage": args.stage, "model": model_desc,
-        "protocol": {"imgsz": IMGSZ, "conf": CONF_EVAL, "iou_nms": IOU,
-                     "max_det": MAX_DET, "letterbox": "square", "excluded_calib": 256,
+        "protocol": {"imgsz": IMGSZ, "conf": CONF_EVAL, "iou_nms": iou_nms,
+                     "max_det": MAX_DET, "letterbox": "square" if args.protocol == "deploy" else "rect",
+                     "gt": args.gt, "excluded_calib": 256 if exclude_calib else 0,
                      "limit": args.limit, "subset_seed": SUBSET_SEED if args.limit else None,
                      "cos_thresh": (0.999 if args.cos_thresh is None else args.cos_thresh)
                      if args.stage == "int8" else None},
@@ -260,6 +310,10 @@ def main() -> int:
     else:
         if args.stage == "int8" and args.cos_thresh is not None:
             suffix += "-nohybrid" if args.cos_thresh <= 0 else f"-ct{args.cos_thresh:g}"
+    if args.gt == "official":
+        suffix += "_gtofficial"
+    if args.protocol == "official":
+        suffix += "_officialproto"
     out = PROJECT_ROOT / "outputs" / f"map_{args.stage}{suffix}.json"
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print(f"报告 -> {out.relative_to(PROJECT_ROOT)}")
