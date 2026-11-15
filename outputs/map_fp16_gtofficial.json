@@ -1,0 +1,33 @@
+{
+  "stage": "fp16",
+  "model": "yolo26n-rk3588.rknn（模拟器按部署参数重建）",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.45,
+    "max_det": 300,
+    "letterbox": "square",
+    "gt": "official",
+    "excluded_calib": 256,
+    "limit": null,
+    "subset_seed": null,
+    "cos_thresh": null
+  },
+  "images": 4744,
+  "detections": 373582,
+  "model_size_mb": 7.45,
+  "metrics": {
+    "AP": 0.39718,
+    "AP50": 0.5677,
+    "AP75": 0.42009,
+    "APs": 0.19685,
+    "APm": 0.43189,
+    "APl": 0.58027,
+    "AR1": 0.32378,
+    "AR10": 0.50406,
+    "AR100": 0.53462,
+    "ARs": 0.31865,
+    "ARm": 0.58348,
+    "ARl": 0.72183
+  }
+}

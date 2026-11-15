@@ -1,0 +1,33 @@
+{
+  "stage": "int8",
+  "model": "板端 board_int8_full.json",
+  "protocol": {
+    "imgsz": 640,
+    "conf": 0.001,
+    "iou_nms": 0.45,
+    "max_det": 300,
+    "letterbox": "square",
+    "gt": "official",
+    "excluded_calib": 256,
+    "limit": null,
+    "subset_seed": null,
+    "cos_thresh": 0.999
+  },
+  "images": 4744,
+  "detections": 329468,
+  "model_size_mb": null,
+  "metrics": {
+    "AP": 0.2786,
+    "AP50": 0.5116,
+    "AP75": 0.26862,
+    "APs": 0.08872,
+    "APm": 0.28412,
+    "APl": 0.47422,
+    "AR1": 0.24628,
+    "AR10": 0.37847,
+    "AR100": 0.40229,
+    "ARs": 0.17337,
+    "ARm": 0.43224,
+    "ARl": 0.61989
+  }
+}
